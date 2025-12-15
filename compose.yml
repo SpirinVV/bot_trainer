@@ -1,0 +1,26 @@
+services:
+  bot:
+    build: .
+    container_name: trainer_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      # hot-reload
+      - ./commands.py:/app/commands.py
+      - ./config.py:/app/config.py
+      - ./database.py:/app/database.py
+      - ./states.py:/app/states.py
+      - ./message_templates.py:/app/message_templates.py
+      - ./main.py:/app/main.py
+      - ./models:/app/models
+      - ./managers:/app/managers
+      - ./utils:/app/utils        
+    networks:
+      - bot_network
+    command: ["python", "-u", "-m", "main"]
+
+networks:
+  bot_network:
+    driver: bridge

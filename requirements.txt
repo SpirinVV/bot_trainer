@@ -1,0 +1,9 @@
+aiogram==3.13.1
+sqlalchemy==2.0.41
+aiosqlite==0.20.0
+python-dotenv==1.0.1
+
+# Data parcers
+garminconnect==0.2.30
+
+aiogram_calendar==0.6
