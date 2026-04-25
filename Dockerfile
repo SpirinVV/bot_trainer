@@ -16,13 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем все файлы проекта
 COPY . .
 
-# Создаем директорию для базы данных и устанавливаем права
-RUN mkdir -p /app/data /app/backups && \
-    chown -R botuser:botuser /app
+# Создаем директорию для базы данных
+RUN mkdir -p /app/data /app/backups
 
 # Устанавливаем переменные окружения для Python
 ENV PYTHONUNBUFFERED=1
 ENV TZ="Europe/Moscow"
-
-# Переключаемся на пользователя botuser
-USER botuser

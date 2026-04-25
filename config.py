@@ -50,7 +50,7 @@ def load_settings() -> Settings:
         BOT_TOKEN=os.getenv("BOT_TOKEN", ""),
         PAYMENT_TOKEN=os.getenv("PAYMENT_TOKEN", ""),
         PAYMENT_TOKEN_TG=payment_token_tg,
-        DATABASE_URL=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bot.db"),
+        DATABASE_URL=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/bot.db"),
         OWNER_ID=int(os.getenv("OWNER_ID", "0")),
         ADMIN_IDS=admin_ids,
         GARMIN_EMAIL=os.getenv("GARMIN_EMAIL", ""),

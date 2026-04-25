@@ -19,13 +19,22 @@ load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Создаем директорию для логов если её нет
+log_dir = '/app/backups'
+os.makedirs(log_dir, exist_ok=True)
+
+# Конфигурируем логирование
+handlers = [logging.StreamHandler()]
+try:
+    log_file = os.path.join(log_dir, 'backup.log')
+    handlers.append(logging.FileHandler(log_file))
+except Exception as e:
+    print(f"⚠️ Не удалось создать лог файл: {e}")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('/app/backups/backup.log'),
-        logging.StreamHandler()
-    ]
+    handlers=handlers
 )
 logger = logging.getLogger(__name__)
 

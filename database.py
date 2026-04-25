@@ -1,7 +1,13 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from config import settings
+import os
+from pathlib import Path
 
+
+# Создаем директорию для БД если её нет
+db_dir = Path('./data')
+db_dir.mkdir(exist_ok=True, parents=True)
 
 engine = create_async_engine(
     settings.DATABASE_URL,

@@ -7,6 +7,7 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - ./backups:/app/backups
       # hot-reload
       - ./commands.py:/app/commands.py
       - ./config.py:/app/config.py
@@ -19,7 +20,6 @@ services:
       - ./models:/app/models
       - ./managers:/app/managers
       - ./utils:/app/utils
-      - ./backups:/app/backups     
     networks:
       - bot_network
     command: ["python", "-u", "-m", "main"]
