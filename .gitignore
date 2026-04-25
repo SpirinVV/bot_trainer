@@ -51,5 +51,8 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
-sandbox.ipynb
+*.ipynb
 dumps/
+
+#google API | dumps
+*.json

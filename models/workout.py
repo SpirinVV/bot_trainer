@@ -1,5 +1,6 @@
 from datetime import date as date_type, time as time_type, datetime
 from typing import Optional, List, Tuple
+import json
 
 from sqlalchemy import (
     String,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     Integer,
+    JSON,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +25,7 @@ workout_participants = Table(
     Base.metadata,
     Column("workout_id", Integer, ForeignKey("workouts.id"), primary_key=True),
     Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
+    Column("payment_details", JSON, nullable=True, comment="Детали платежа: {payment_method: TG|LINK, status: success|pending|failed}"),
 )
 
 workout_invited = Table(

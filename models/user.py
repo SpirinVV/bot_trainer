@@ -22,6 +22,9 @@ class User(Base):
 
     birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="Вес в кг")
+    
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="Номер телефона")
+    email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, comment="Email адрес")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

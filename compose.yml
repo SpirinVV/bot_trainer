@@ -14,12 +14,58 @@ services:
       - ./states.py:/app/states.py
       - ./message_templates.py:/app/message_templates.py
       - ./main.py:/app/main.py
+      - ./api.py:/app/api.py
+      - ./payments.py:/app/payments.py
       - ./models:/app/models
       - ./managers:/app/managers
-      - ./utils:/app/utils        
+      - ./utils:/app/utils
+      - ./backups:/app/backups     
     networks:
       - bot_network
     command: ["python", "-u", "-m", "main"]
+
+  api:
+    build: .
+    container_name: trainer_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./api.py:/app/api.py
+      - ./payments.py:/app/payments.py
+      - ./config.py:/app/config.py
+      - ./database.py:/app/database.py
+      - ./models:/app/models
+      - ./managers:/app/managers
+    networks:
+      - bot_network
+    command: ["python", "-u", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      - bot
+
+  backuper:
+    build: .
+    container_name: trainer_backuper
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Moscow
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+      - ./models:/app/models
+      - ./database.py:/app/database.py
+    networks:
+      - bot_network
+    command: ["python", "-u", "backups/schedule_backup.py"]
+    depends_on:
+      - bot
 
 networks:
   bot_network:

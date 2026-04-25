@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, date as date_type, time as time_type
 
 from aiogram import Router, Bot, F
+from aiogram.filters import StateFilter
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -132,15 +133,15 @@ class AdminPanel:
         router.callback_query.register(self._on_workout_location, lambda cq: cq.data and cq.data.startswith("workout:location:"))
         
         router.pre_checkout_query.register(self._on_pre_checkout_query)
-        router.message.register(self._on_successful_payment)
+        router.message.register(self._on_successful_payment, F.successful_payment)
 
-        router.message.register(self._wc_name, AdminWorkoutStates.waiting_for_name)
-        router.message.register(self._wc_date, AdminWorkoutStates.waiting_for_date)
-        router.message.register(self._wc_time, AdminWorkoutStates.waiting_for_time)
-        router.message.register(self._wc_location_received, AdminWorkoutStates.waiting_for_location, F.location)
-        router.message.register(self._wc_location_skip, AdminWorkoutStates.waiting_for_location)
-        router.message.register(self._wc_price, AdminWorkoutStates.waiting_for_price)
-        router.message.register(self._wc_comment, AdminWorkoutStates.waiting_for_comment)
+        router.message.register(self._wc_name, StateFilter(AdminWorkoutStates.waiting_for_name))
+        router.message.register(self._wc_date, StateFilter(AdminWorkoutStates.waiting_for_date))
+        router.message.register(self._wc_time, StateFilter(AdminWorkoutStates.waiting_for_time))
+        router.message.register(self._wc_location_received, StateFilter(AdminWorkoutStates.waiting_for_location), F.location)
+        router.message.register(self._wc_location_skip, StateFilter(AdminWorkoutStates.waiting_for_location))
+        router.message.register(self._wc_price, StateFilter(AdminWorkoutStates.waiting_for_price))
+        router.message.register(self._wc_comment, StateFilter(AdminWorkoutStates.waiting_for_comment))
 
         router.callback_query.register(self._wc_cancel, lambda c: c.data == "create_workout_cancel")
         router.callback_query.register(self._wc_confirm, lambda c: c.data == "create_workout_confirm")
@@ -148,7 +149,7 @@ class AdminPanel:
         router.callback_query.register(
             self._wc_invited_selection, 
             self._check_invited_selection_callback,
-            AdminWorkoutStates.waiting_for_invited_selection
+            StateFilter(AdminWorkoutStates.waiting_for_invited_selection)
         )
 
         router.callback_query.register(self._process_simple_calendar, SimpleCalendarCallback.filter())
@@ -330,9 +331,9 @@ class AdminPanel:
 
     async def _start_create_workout(self, callback: CallbackQuery, state: FSMContext):
         await callback.answer()
-        await callback.message.answer(f"{UI.PLUS} <b>Создание тренировки</b>\n\nВведите название тренировки:")
         await state.clear()
         await state.set_state(AdminWorkoutStates.waiting_for_name)
+        await callback.message.answer(f"{UI.PLUS} <b>Создание тренировки</b>\n\nВведите название тренировки:")
 
     async def _wc_name(self, message: Message, state: FSMContext):
         name = (message.text or "").strip()
@@ -718,17 +719,20 @@ class AdminPanel:
             if workout.price == 0:
                 await callback.message.answer(f"✅ Вы подтверждаете участие в тренировке '{workout.name}'")
             else:
-                print(f"Token {settings.PAYMENT_TOKEN}")
-                await callback.message.answer_invoice(
-                    title=workout.name,
-                    description=f"Тренировка {workout.date.strftime('%d.%m.%Y')} в {workout.time.strftime('%H:%M')}",
-                    payload=f"workout_{workout_id}_{user.tg_id}",
-                    provider_token=settings.PAYMENT_TOKEN,
-                    currency="RUB",
-                    prices=[
-                        {"label": "Стоимость тренировки", "amount": int(workout.price * 100)}
-                    ]
-                )
+                if settings.PAYMENT_MODE == 'TG':
+                    await callback.message.answer_invoice(
+                        title=workout.name,
+                        description=f"Тренировка {workout.date.strftime('%d.%m.%Y')} в {workout.time.strftime('%H:%M')}",
+                        payload=f"workout_{workout_id}_{user.tg_id}",
+                        provider_token=settings.PAYMENT_TOKEN_TG,
+                        currency="RUB",
+                        prices=[
+                            {"label": "Стоимость тренировки", "amount": int(workout.price * 100)}
+                        ]
+                    )
+                else: # PS not connected to TG
+                    raise Exception('Payment system mode not configured properly') 
+
 
     async def _on_workout_location(self, callback: CallbackQuery):
         await callback.answer()

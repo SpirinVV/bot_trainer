@@ -826,10 +826,9 @@ def register_handlers(dp, admin_panel_param=None):
     """
     global admin_panel
     admin_panel = admin_panel_param
-
-    dp.include_router(router)
-
     if admin_panel is not None:
         admin_panel.register(router)
+
+    dp.include_router(router)
 
 

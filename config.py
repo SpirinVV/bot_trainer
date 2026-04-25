@@ -11,11 +11,15 @@ load_dotenv()
 class Settings:
     BOT_TOKEN: str
     PAYMENT_TOKEN: str
+    PAYMENT_TOKEN_TG: str
     DATABASE_URL: str
     OWNER_ID: int
     ADMIN_IDS: List[int]
     GARMIN_EMAIL: str
     GARMIN_PASSWORD: str
+    PAYMENT_MODE: str
+    YOOKASSA_ACCOUNT_ID: str
+    YOOKASSA_SECRET_KEY: str
 
     def __post_init__(self):
         if not self.BOT_TOKEN:
@@ -36,14 +40,24 @@ def load_settings() -> Settings:
             admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
         except ValueError:
             print("Ошибка при парсинге ADMIN_IDS, используется пустой список")
+    if os.getenv('TEST_MODE', False):
+        payment_token_tg = os.getenv("PAYMENT_TOKEN_TG_TEST", "")
+    else:
+        payment_token_tg = os.getenv("PAYMENT_TOKEN_TG", "")
+
+
     return Settings(
         BOT_TOKEN=os.getenv("BOT_TOKEN", ""),
         PAYMENT_TOKEN=os.getenv("PAYMENT_TOKEN", ""),
+        PAYMENT_TOKEN_TG=payment_token_tg,
         DATABASE_URL=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bot.db"),
         OWNER_ID=int(os.getenv("OWNER_ID", "0")),
         ADMIN_IDS=admin_ids,
         GARMIN_EMAIL=os.getenv("GARMIN_EMAIL", ""),
-        GARMIN_PASSWORD=os.getenv("GARMIN_PASSWORD", "")
+        GARMIN_PASSWORD=os.getenv("GARMIN_PASSWORD", ""),
+        PAYMENT_MODE=os.getenv("PAYMENT_MODE", "TG"),
+        YOOKASSA_ACCOUNT_ID=os.getenv("YOOKASSA_ACCOUNT_ID", ""),
+        YOOKASSA_SECRET_KEY=os.getenv("YOOKASSA_SECRET_KEY", ""),
     )
 
 
