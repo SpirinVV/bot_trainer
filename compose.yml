@@ -20,6 +20,9 @@ services:
       - ./models:/app/models
       - ./managers:/app/managers
       - ./utils:/app/utils
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - bot_network
     command: ["python", "-u", "-m", "main"]
@@ -42,11 +45,12 @@ services:
       - ./database.py:/app/database.py
       - ./models:/app/models
       - ./managers:/app/managers
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - bot_network
     command: ["python", "-u", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
-    depends_on:
-      - bot
 
   backuper:
     build: .
@@ -61,11 +65,12 @@ services:
       - ./backups:/app/backups
       - ./models:/app/models
       - ./database.py:/app/database.py
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - bot_network
     command: ["python", "-u", "backups/schedule_backup.py"]
-    depends_on:
-      - bot
 
 networks:
   bot_network:
