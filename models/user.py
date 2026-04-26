@@ -66,7 +66,9 @@ class User(Base):
             "last_name": self.last_name or "—",
             "middle_name": self.middle_name or "—",
             "birth_date": self.birth_date.strftime("%d.%m.%Y") if self.birth_date else "—",
-            "weight": f"{self.weight} кг" if self.weight else "—"
+            "weight": f"{self.weight} кг" if self.weight else "—",
+            "phone": self.phone or "—",
+            "email": self.email or "—",
         }
 
     @property
@@ -76,7 +78,9 @@ class User(Base):
             "last_name": "Фамилия",
             "middle_name": "Отчество",
             "birth_date": "Дата рождения",
-            "weight": "Вес"
+            "weight": "Вес",
+            "phone": "Телефон",
+            "email": "Email",
         }
 
     def get_text_display_tg(self):
@@ -90,7 +94,9 @@ class User(Base):
             f"👤 Детали пользователя:\n"
             f"{name_link}\n\n"
             f"Возраст: {self.age}\n"
-            f"Вес: {self.weight}"
+            f"Вес: {self.weight}\n"
+            f"Телефон: {self.phone or '—'}\n"
+            f"Email: {self.email or '—'}"
         )
 
 

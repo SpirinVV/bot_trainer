@@ -412,14 +412,18 @@ async def profile_edit_field(callback, state: FSMContext):
         "middle_name": UserProfileStates.waiting_for_edit_middle_name,
         "birth_date": UserProfileStates.waiting_for_edit_birth_date,
         "weight": UserProfileStates.waiting_for_edit_weight,
+        "phone": UserProfileStates.waiting_for_edit_phone,
+        "email": UserProfileStates.waiting_for_edit_email,
     }
-    
+
     field_to_label = {
         "first_name": "Имя",
         "last_name": "Фамилия",
         "middle_name": "Отчество",
         "birth_date": "Дата рождения (ДД.МММ.ГГГГ)",
         "weight": "Вес (в кг)",
+        "phone": "Телефон (79991234567)",
+        "email": "Email",
     }
     
     if field_name not in field_to_state:
@@ -691,10 +695,10 @@ async def profile_edit_birth_date(message: Message, state: FSMContext):
 async def profile_edit_weight(message: Message, state: FSMContext):
     """Редактирование веса в профиле"""
     weight = None
-    
+
     try:
         weight = float((message.text or "").strip().replace(",", "."))
-        
+
         if weight <= 0 or weight > 500:
             await message.answer(
                 "❌ Неверное значение веса. Введите корректный вес (например, 75.5)"
@@ -705,16 +709,58 @@ async def profile_edit_weight(message: Message, state: FSMContext):
             "❌ Неверный формат. Введите число (например, 75.5)"
         )
         return
-    
+
     tg_id = message.from_user.id
     user_manager = UserManager(async_session_maker)
     success = await user_manager.update_user(tg_id=tg_id, weight=weight)
-    
+
     if success:
         await message.answer(f"✅ Вес обновлен на {weight} кг")
     else:
         await message.answer("❌ Ошибка при обновлении веса.")
-    
+
+    await state.clear()
+
+
+@router.message(UserProfileStates.waiting_for_edit_phone)
+async def profile_edit_phone(message: Message, state: FSMContext):
+    """Редактирование телефона в профиле"""
+    import re
+    phone = (message.text or "").strip()
+    phone = re.sub(r"[^\d+]", "", phone)
+    if not re.match(r"^\+?7\d{10}$|^8\d{10}$", phone):
+        await message.answer(
+            "❌ Неверный формат телефона.\n"
+            "Введите номер в формате 79991234567 или +79991234567"
+        )
+        return
+    if phone.startswith("8"):
+        phone = "7" + phone[1:]
+    tg_id = message.from_user.id
+    user_manager = UserManager(async_session_maker)
+    success = await user_manager.update_user(tg_id=tg_id, phone=phone)
+    if success:
+        await message.answer(f"✅ Телефон обновлен на {phone}")
+    else:
+        await message.answer("❌ Ошибка при обновлении телефона.")
+    await state.clear()
+
+
+@router.message(UserProfileStates.waiting_for_edit_email)
+async def profile_edit_email(message: Message, state: FSMContext):
+    """Редактирование email в профиле"""
+    import re
+    email = (message.text or "").strip()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        await message.answer("❌ Неверный формат email. Пример: user@example.com")
+        return
+    tg_id = message.from_user.id
+    user_manager = UserManager(async_session_maker)
+    success = await user_manager.update_user(tg_id=tg_id, email=email)
+    if success:
+        await message.answer(f"✅ Email обновлен на {email}")
+    else:
+        await message.answer("❌ Ошибка при обновлении email.")
     await state.clear()
 
 

@@ -13,28 +13,43 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 import uvicorn
+from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
 from payments import PaymentService, PaymentNotification
 from database import async_session_maker, init_db
 from managers.user import UserManager
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Bot Trainer Payments API")
 
-# Инициализация менеджеров
-user_manager = UserManager(async_session_maker)
+bot: Bot = None
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Инициализировать БД при старте"""
+    global bot
     logger.info("🚀 Инициализация FastAPI сервера...")
     try:
         await init_db()
         logger.info("✓ База данных инициализирована")
     except Exception as e:
         logger.warning(f"⚠️ БД уже инициализирована: {str(e)}")
+    bot = Bot(
+        token=settings.BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    logger.info("✓ Bot instance создан для уведомлений")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global bot
+    if bot:
+        await bot.session.close()
 
 
 @app.post("/webhook/yookassa")

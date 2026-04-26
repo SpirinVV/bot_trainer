@@ -135,72 +135,126 @@ class PaymentService:
             raise
 
     @staticmethod
-    async def handle_webhook(notification: PaymentNotification, user_manager: UserManager) -> bool:
-        """
-        Обработать webhook от Yookassa
-        
-        Args:
-            notification: Уведомление от Yookassa
-            user_manager: Менеджер пользователей для обновления статуса
-        
-        Returns:
-            bool: True если обработка успешна
-        """
+    async def handle_webhook(notification: PaymentNotification, bot=None) -> bool:
         logger.info(f"📬 Получено уведомление: {notification.event}")
-        
+
         try:
             payment_obj = notification.object
             payment_id = payment_obj.get("id")
             event = notification.event
             status = payment_obj.get("status")
-            
-            logger.info(f"   ID платежа: {payment_id}")
-            logger.info(f"   Статус: {status}")
-            
-            # Извлечь метаданные (user_id, order_id и т.д.)
+
+            logger.info(f"   ID платежа: {payment_id}, статус: {status}")
+
             metadata = payment_obj.get("metadata", {})
-            user_id = metadata.get("user_id")
-            order_id = metadata.get("order_id")
-            
-            # Обработка успешного платежа
+            workout_id_str = metadata.get("workout_id")
+            user_id_str = metadata.get("user_id")
+            tg_id_str = metadata.get("tg_id")
+
             if event == "payment.succeeded" and status == "succeeded":
                 logger.info(f"✓ Платеж успешен: {payment_id}")
-                
-                if user_id:
-                    # Обновить статус платежа в БД
+
+                if workout_id_str and user_id_str:
+                    workout_id = int(workout_id_str)
+                    user_id = int(user_id_str)
+
+                    from sqlalchemy import select, update as sa_update
+                    from models.workout import workout_participants as wp_table, Workout as WorkoutModel
+
                     async with async_session_maker() as session:
-                        user = await user_manager.get_user(int(user_id))
-                        if user:
-                            logger.info(f"✓ Платеж обработан для пользователя {user_id}")
-                            # TODO: Здесь добавить логику обновления статуса платежа в БД
-                            # await user_manager.update_payment_status(user_id, payment_id, "completed")
-                
+                        payment_details = {
+                            "payment_method": "LINK",
+                            "status": "success",
+                            "payment_id": payment_id,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }
+
+                        existing = (await session.execute(
+                            select(wp_table).where(
+                                (wp_table.c.workout_id == workout_id) &
+                                (wp_table.c.user_id == user_id)
+                            )
+                        )).first()
+
+                        if existing:
+                            await session.execute(
+                                sa_update(wp_table)
+                                .where(
+                                    (wp_table.c.workout_id == workout_id) &
+                                    (wp_table.c.user_id == user_id)
+                                )
+                                .values(payment_details=payment_details)
+                            )
+                        else:
+                            await session.execute(
+                                wp_table.insert().values(
+                                    workout_id=workout_id,
+                                    user_id=user_id,
+                                    payment_details=payment_details,
+                                )
+                            )
+                        await session.commit()
+                        logger.info(f"✓ workout_participants обновлен: workout={workout_id}, user={user_id}")
+
+                        if bot and tg_id_str:
+                            workout = await session.get(WorkoutModel, workout_id)
+                            if workout:
+                                try:
+                                    await bot.send_message(
+                                        chat_id=int(tg_id_str),
+                                        text=(
+                                            f"✅ Оплата прошла успешно!\n\n"
+                                            f"Вы записаны на тренировку:\n"
+                                            f"<b>{workout.name}</b>\n\n"
+                                            f"📅 Дата: {workout.date.strftime('%d.%m.%Y')}\n"
+                                            f"🕐 Время: {workout.time.strftime('%H:%M')}\n"
+                                            f"💰 Стоимость: {workout.price} ₽"
+                                        ),
+                                        parse_mode="HTML",
+                                    )
+                                except Exception as notify_err:
+                                    logger.error(f"Ошибка отправки уведомления: {notify_err}")
+
                 return True
-            
-            # Платеж отменён
+
             elif event == "payment.canceled" or status == "canceled":
                 logger.warning(f"❌ Платеж отменён: {payment_id}")
-                
-                if user_id:
+
+                if workout_id_str and user_id_str:
+                    workout_id = int(workout_id_str)
+                    user_id = int(user_id_str)
+
+                    from sqlalchemy import update as sa_update
+                    from models.workout import workout_participants as wp_table
+
                     async with async_session_maker() as session:
-                        logger.info(f"⚠️ Платеж отменён для пользователя {user_id}")
-                        # TODO: Обновить статус в БД
-                        # await user_manager.update_payment_status(user_id, payment_id, "canceled")
-                
+                        await session.execute(
+                            sa_update(wp_table)
+                            .where(
+                                (wp_table.c.workout_id == workout_id) &
+                                (wp_table.c.user_id == user_id)
+                            )
+                            .values(payment_details={
+                                "payment_method": "LINK",
+                                "status": "failed",
+                                "payment_id": payment_id,
+                                "timestamp": datetime.utcnow().isoformat(),
+                            })
+                        )
+                        await session.commit()
+
                 return True
-            
-            # Платеж ожидает подтверждения
+
             elif event == "payment.waiting_for_capture":
                 logger.info(f"⏳ Платеж ожидает подтверждения: {payment_id}")
                 return True
-            
+
             else:
                 logger.warning(f"⚠️ Неизвестное событие: {event}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"❌ Ошибка обработки webhook: {str(e)}", exc_info=True)
-            # Возвращаем True чтобы Yookassa не повторял попытку
             return True
 
 
@@ -208,31 +262,19 @@ class WorkoutPaymentHelper:
     """Помощник для управления платежами при записи на тренировку"""
     
     @staticmethod
-    def get_payment_keyboard(workout_id: int, user_id: int, price: float) -> Optional[InlineKeyboardMarkup]:
-        """
-        Получить клавиатуру с кнопками оплаты
-        
-        Args:
-            workout_id: ID тренировки
-            user_id: ID пользователя
-            price: Стоимость тренировки
-        
-        Returns:
-            InlineKeyboardMarkup с кнопками оплаты или None если бесплатно
-        """
+    def get_payment_keyboard(workout_id: int, price: float) -> Optional[InlineKeyboardMarkup]:
         if not price or price <= 0:
             return None
-        
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="💳 Оплатить (TG)",
-                    callback_data=f"pay_tg:{workout_id}:{user_id}"
+                    callback_data=f"pay_tg:{workout_id}",
                 ),
                 InlineKeyboardButton(
                     text="💰 Оплатить (СБП)",
-                    callback_data=f"pay_link:{workout_id}:{user_id}"
-                )
+                    callback_data=f"pay_link:{workout_id}",
+                ),
             ]
         ])
         return kb

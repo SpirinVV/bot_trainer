@@ -25,10 +25,12 @@ from aiogram_calendar import (
     get_user_locale,
 )
 
+from sqlalchemy import select, insert, update as sa_update
+
 from models.user import User
 from managers.user import UserManager
 from database import async_session_maker
-from models.workout import Workout as WorkoutModel
+from models.workout import Workout as WorkoutModel, workout_participants as wp_table
 from states import AdminStates
 from config import settings
 
@@ -131,6 +133,8 @@ class AdminPanel:
         
         router.callback_query.register(self._on_workout_join, lambda cq: cq.data and cq.data.startswith("workout:join:"))
         router.callback_query.register(self._on_workout_location, lambda cq: cq.data and cq.data.startswith("workout:location:"))
+        router.callback_query.register(self._on_pay_tg, lambda cq: cq.data and cq.data.startswith("pay_tg:"))
+        router.callback_query.register(self._on_pay_link, lambda cq: cq.data and cq.data.startswith("pay_link:"))
         
         router.pre_checkout_query.register(self._on_pre_checkout_query)
         router.message.register(self._on_successful_payment, F.successful_payment)
@@ -698,41 +702,180 @@ class AdminPanel:
         await callback.answer()
         workout_id = int(callback.data.split(":")[2])
         user_tg_id = callback.from_user.id
-        
+
         async with async_session_maker() as session:
             user = await UserManager(async_session_maker).get_by_tg_id(user_tg_id)
             if not user:
                 await callback.message.answer("Пользователь не найден в системе.")
                 return
-            
+
             workout = await session.get(WorkoutModel, workout_id)
             if not workout:
                 await callback.message.answer("Тренировка не найдена.")
                 return
-            
-            user = await session.merge(user)
-            
-            if user not in workout.participants:
-                workout.participants.append(user)
-                await session.commit()
-            
-            if workout.price == 0:
-                await callback.message.answer(f"✅ Вы подтверждаете участие в тренировке '{workout.name}'")
-            else:
-                if settings.PAYMENT_MODE == 'TG':
-                    await callback.message.answer_invoice(
-                        title=workout.name,
-                        description=f"Тренировка {workout.date.strftime('%d.%m.%Y')} в {workout.time.strftime('%H:%M')}",
-                        payload=f"workout_{workout_id}_{user.tg_id}",
-                        provider_token=settings.PAYMENT_TOKEN_TG,
-                        currency="RUB",
-                        prices=[
-                            {"label": "Стоимость тренировки", "amount": int(workout.price * 100)}
-                        ]
-                    )
-                else: # PS not connected to TG
-                    raise Exception('Payment system mode not configured properly') 
 
+            existing = (await session.execute(
+                select(wp_table).where(
+                    (wp_table.c.workout_id == workout_id) &
+                    (wp_table.c.user_id == user.id)
+                )
+            )).first()
+
+            if existing:
+                pd = existing.payment_details or {}
+                if pd.get("status") == "success":
+                    await callback.message.answer(f"✅ Вы уже записаны на тренировку «{workout.name}».")
+                elif pd.get("status") == "pending":
+                    await callback.message.answer(f"⏳ Ожидается оплата за тренировку «{workout.name}».")
+                return
+
+            if not workout.price or workout.price == 0:
+                await session.execute(
+                    wp_table.insert().values(
+                        workout_id=workout_id,
+                        user_id=user.id,
+                        payment_details={"payment_method": None, "status": "success"},
+                    )
+                )
+                await session.commit()
+                await callback.message.answer(
+                    f"✅ Вы успешно записаны на тренировку!\n\n"
+                    f"*{workout.name}*\n"
+                    f"📅 Дата: {workout.date.strftime('%d.%m.%Y')}\n"
+                    f"🕐 Время: {workout.time.strftime('%H:%M')}",
+                    parse_mode="Markdown",
+                )
+            else:
+                from payments import WorkoutPaymentHelper
+                kb = WorkoutPaymentHelper.get_payment_keyboard(workout_id, workout.price)
+                await callback.message.answer(
+                    f"Тренировка: *{workout.name}*\n"
+                    f"Стоимость: {workout.price} ₽\n\n"
+                    f"Выберите способ оплаты:",
+                    reply_markup=kb,
+                    parse_mode="Markdown",
+                )
+
+
+    async def _on_pay_tg(self, callback: CallbackQuery):
+        await callback.answer()
+        workout_id = int(callback.data.split(":")[1])
+        user_tg_id = callback.from_user.id
+
+        user = await UserManager(async_session_maker).get_by_tg_id(user_tg_id)
+        if not user:
+            await callback.message.answer("Пользователь не найден в системе.")
+            return
+
+        if not user.phone or not user.email:
+            missing = []
+            if not user.phone:
+                missing.append("номер телефона")
+            if not user.email:
+                missing.append("email")
+            await callback.answer(
+                f"⚠️ Для оплаты укажите: {' и '.join(missing)}. Используйте /profile",
+                show_alert=True,
+            )
+            return
+
+        async with async_session_maker() as session:
+            workout = await session.get(WorkoutModel, workout_id)
+            if not workout:
+                await callback.message.answer("Тренировка не найдена.")
+                return
+
+            await callback.message.answer_invoice(
+                title=workout.name,
+                description=f"Тренировка {workout.date.strftime('%d.%m.%Y')} в {workout.time.strftime('%H:%M')}",
+                payload=f"workout_{workout_id}_{user.tg_id}",
+                provider_token=settings.PAYMENT_TOKEN_TG,
+                currency="RUB",
+                prices=[{"label": "Стоимость тренировки", "amount": int(workout.price * 100)}],
+            )
+
+    async def _on_pay_link(self, callback: CallbackQuery):
+        await callback.answer()
+        workout_id = int(callback.data.split(":")[1])
+        user_tg_id = callback.from_user.id
+
+        user = await UserManager(async_session_maker).get_by_tg_id(user_tg_id)
+        if not user:
+            await callback.message.answer("Пользователь не найден в системе.")
+            return
+
+        if not user.phone or not user.email:
+            missing = []
+            if not user.phone:
+                missing.append("номер телефона")
+            if not user.email:
+                missing.append("email")
+            await callback.answer(
+                f"⚠️ Для оплаты укажите: {' и '.join(missing)}. Используйте /profile",
+                show_alert=True,
+            )
+            return
+
+        async with async_session_maker() as session:
+            workout = await session.get(WorkoutModel, workout_id)
+            if not workout:
+                await callback.message.answer("Тренировка не найдена.")
+                return
+
+            try:
+                from payments import PaymentService, WorkoutPaymentHelper
+                payment = await PaymentService.create_payment(
+                    amount=workout.price,
+                    description=f"Тренировка {workout.name} — {workout.date.strftime('%d.%m.%Y')}",
+                    customer_email=user.email,
+                    customer_phone=user.phone,
+                    workout_id=str(workout_id),
+                    user_id=str(user.id),
+                    tg_id=str(user.tg_id),
+                )
+
+                payment_details = WorkoutPaymentHelper.create_payment_details(
+                    payment_method="LINK",
+                    status="pending",
+                    payment_id=payment.get("id"),
+                )
+
+                existing = (await session.execute(
+                    select(wp_table).where(
+                        (wp_table.c.workout_id == workout_id) &
+                        (wp_table.c.user_id == user.id)
+                    )
+                )).first()
+
+                if existing:
+                    await session.execute(
+                        sa_update(wp_table)
+                        .where(
+                            (wp_table.c.workout_id == workout_id) &
+                            (wp_table.c.user_id == user.id)
+                        )
+                        .values(payment_details=payment_details)
+                    )
+                else:
+                    await session.execute(
+                        wp_table.insert().values(
+                            workout_id=workout_id,
+                            user_id=user.id,
+                            payment_details=payment_details,
+                        )
+                    )
+                await session.commit()
+
+                confirmation_url = payment.get("confirmation_url")
+                await callback.message.answer(
+                    f"💳 Для оплаты перейдите по ссылке:\n\n"
+                    f"{confirmation_url}\n\n"
+                    f"После оплаты вы получите подтверждение.",
+                    disable_web_page_preview=True,
+                )
+            except Exception as e:
+                logger.error(f"Ошибка создания платежа СБП: {e}")
+                await callback.message.answer("❌ Ошибка при создании платежа. Попробуйте позже.")
 
     async def _on_workout_location(self, callback: CallbackQuery):
         await callback.answer()
@@ -899,39 +1042,67 @@ class AdminPanel:
         await pre_checkout_query.answer(ok=True)
 
     async def _on_successful_payment(self, message):
-        """Обработчик успешного платежа"""
+        """Обработчик успешного платежа через Telegram"""
         try:
             if not message.successful_payment:
                 return
-            
+
             payload = message.successful_payment.invoice_payload
             parts = payload.split("_")
             if len(parts) < 3 or parts[0] != "workout":
                 logger.error(f"Invalid payload format: {payload}")
                 return
-            
+
             workout_id = int(parts[1])
-            
+
+            from payments import WorkoutPaymentHelper
             async with async_session_maker() as session:
                 workout = await session.get(WorkoutModel, workout_id)
                 user = await UserManager(async_session_maker).get_by_tg_id(message.from_user.id)
-                
+
                 if not workout or not user:
                     await message.answer("❌ Ошибка: тренировка или пользователь не найдены.")
                     return
-                
-                if user not in workout.participants:
-                    workout.participants.append(user)
-                    await session.commit()
-                
+
+                payment_details = WorkoutPaymentHelper.create_payment_details(
+                    payment_method="TG",
+                    status="success",
+                )
+
+                existing = (await session.execute(
+                    select(wp_table).where(
+                        (wp_table.c.workout_id == workout_id) &
+                        (wp_table.c.user_id == user.id)
+                    )
+                )).first()
+
+                if existing:
+                    await session.execute(
+                        sa_update(wp_table)
+                        .where(
+                            (wp_table.c.workout_id == workout_id) &
+                            (wp_table.c.user_id == user.id)
+                        )
+                        .values(payment_details=payment_details)
+                    )
+                else:
+                    await session.execute(
+                        wp_table.insert().values(
+                            workout_id=workout_id,
+                            user_id=user.id,
+                            payment_details=payment_details,
+                        )
+                    )
+                await session.commit()
+
                 await message.answer(
                     f"✅ Спасибо за оплату!\n\n"
                     f"Вы успешно зарегистрированы на тренировку:\n"
                     f"*{workout.name}*\n\n"
-                    f"Дата: {workout.date.strftime('%d.%m.%Y')}\n"
-                    f"Время: {workout.time.strftime('%H:%M')}\n"
-                    f"Стоимость: {workout.price} ₽",
-                    parse_mode="Markdown"
+                    f"📅 Дата: {workout.date.strftime('%d.%m.%Y')}\n"
+                    f"🕐 Время: {workout.time.strftime('%H:%M')}\n"
+                    f"💰 Стоимость: {workout.price} ₽",
+                    parse_mode="Markdown",
                 )
         except Exception as e:
             logger.exception("Ошибка при обработке успешного платежа")

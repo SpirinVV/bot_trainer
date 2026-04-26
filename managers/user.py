@@ -74,7 +74,9 @@ class UserManager:
         last_name: Optional[str] = None,
         middle_name: Optional[str] = None,
         birth_date: Optional[date] = None,
-        weight: Optional[float] = None
+        weight: Optional[float] = None,
+        phone: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> bool:
         values = {}
         if first_name is not None:
@@ -87,6 +89,10 @@ class UserManager:
             values['birth_date'] = birth_date
         if weight is not None:
             values['weight'] = weight
+        if phone is not None:
+            values['phone'] = phone
+        if email is not None:
+            values['email'] = email
 
         if not values:
             return False
@@ -105,7 +111,9 @@ class UserManager:
         last_name: Optional[str] = None,
         middle_name: Optional[str] = None,
         birth_date: Optional[date] = None,
-        weight: Optional[float] = None
+        weight: Optional[float] = None,
+        phone: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> bool:
         values = {}
         if first_name is not None:
@@ -118,6 +126,10 @@ class UserManager:
             values['birth_date'] = birth_date
         if weight is not None:
             values['weight'] = weight
+        if phone is not None:
+            values['phone'] = phone
+        if email is not None:
+            values['email'] = email
 
         if not values:
             return False
