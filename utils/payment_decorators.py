@@ -1,101 +1,53 @@
 """
-Декораторы для проверки платежных деталей
+Декораторы для проверки платёжных данных перед оплатой по СБП.
 """
 import logging
 from functools import wraps
-from typing import Callable, Any
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import CallbackQuery
 
 logger = logging.getLogger(__name__)
 
 
-def requires_payment_info(func: Callable) -> Callable:
+def requires_payment_info(func):
     """
-    Декоратор для проверки наличия платежной информации (телефон и email)
-    перед попыткой оплаты.
-    
-    Использование:
-        @requires_payment_info
-        async def handle_payment(message: Message, user: User):
-            ...
+    Проверяет наличие phone и email у пользователя перед оплатой по СБП.
+    Применяется к callback-хендлерам (методам класса или обычным функциям).
+    При отсутствии данных показывает alert и прерывает выполнение.
     """
     @wraps(func)
-    async def wrapper(obj: Any, *args, **kwargs) -> Any:
-        # obj может быть Message или CallbackQuery
-        from aiogram.types import Message, CallbackQuery
-        
-        user = None
-        
-        # Извлечь user из kwargs или из контекста
-        if "user" in kwargs:
-            user = kwargs["user"]
-        else:
-            # Пытаться получить из args
-            for arg in args:
-                if hasattr(arg, "first_name") and hasattr(arg, "tg_id"):
-                    user = arg
-                    break
-        
-        # Определить, откуда отправить сообщение
-        if isinstance(obj, Message):
-            message = obj
-            callback = None
-        elif isinstance(obj, CallbackQuery):
-            callback = obj
-            message = obj.message
-        else:
-            message = obj
-            callback = None
-        
-        # Проверить данные пользователя
+    async def wrapper(*args, **kwargs):
+        # Найти CallbackQuery среди аргументов (поддерживает и self.method, и обычную функцию)
+        callback: CallbackQuery = None
+        for arg in args:
+            if isinstance(arg, CallbackQuery):
+                callback = arg
+                break
+
+        if callback is None:
+            return await func(*args, **kwargs)
+
+        from database import async_session_maker
+        from managers.user import UserManager
+
+        user = await UserManager(async_session_maker).get_by_tg_id(callback.from_user.id)
+
         if not user:
-            if message:
-                await message.answer(
-                    "❌ Ошибка: не удалось получить данные пользователя"
-                )
+            await callback.answer("❌ Пользователь не найден в системе.", show_alert=True)
             return
-        
+
         if not user.phone or not user.email:
             missing = []
             if not user.phone:
                 missing.append("номер телефона")
             if not user.email:
                 missing.append("email")
-            
-            text = (
-                f"⚠️ Для оплаты необходимо указать: {' и '.join(missing)}\n\n"
-                f"Пожалуйста, заполните профиль перед оплатой.\n"
-                f"Используйте команду /profile"
+            await callback.answer(
+                f"⚠️ Для оплаты по СБП необходимо указать: {' и '.join(missing)}.\n\n"
+                f"Обновите данные через /profile → ✏️ Редактировать",
+                show_alert=True,
             )
-            
-            if callback:
-                await callback.answer(text, show_alert=True)
-            elif message:
-                await message.answer(text)
             return
-        
-        # Все хорошо, выполнить функцию
-        return await func(obj, *args, **kwargs)
-    
+
+        return await func(*args, **kwargs)
+
     return wrapper
-
-
-def requires_payment_method(payment_method: str):
-    """
-    Декоратор для проверки выбранного способа оплаты
-    
-    Args:
-        payment_method: 'TG' или 'LINK'
-    
-    Использование:
-        @requires_payment_method('TG')
-        async def handle_tg_payment(message: Message):
-            ...
-    """
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(obj: Any, *args, **kwargs) -> Any:
-            kwargs["payment_method"] = payment_method
-            return await func(obj, *args, **kwargs)
-        return wrapper
-    return decorator

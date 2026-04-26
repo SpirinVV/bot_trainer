@@ -325,9 +325,58 @@ async def process_weight(message: Message, state: FSMContext):
             )
             return
     
+    await state.update_data(weight=weight)
+
+    skip_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="⏭️ Пропустить")]],
+        resize_keyboard=True
+    )
+    await message.answer(REGISTRATION_MESSAGES['phone'], reply_markup=skip_kb)
+    await state.set_state(RegistrationStates.waiting_for_phone)
+
+
+@router.message(RegistrationStates.waiting_for_phone)
+async def process_phone(message: Message, state: FSMContext):
+    import re
+    phone = None
+    if message.text != "⏭️ Пропустить":
+        raw = re.sub(r"[^\d+]", "", (message.text or "").strip())
+        if not re.match(r"^\+?7\d{10}$|^8\d{10}$", raw):
+            await message.answer(
+                "❌ Неверный формат телефона.\n"
+                "Введите номер в формате 79991234567 или +79991234567\n\n"
+                "Или нажмите '⏭️ Пропустить'"
+            )
+            return
+        phone = "7" + raw[1:] if raw.startswith("8") else raw.lstrip("+")
+        if not phone.startswith("7"):
+            phone = "7" + phone
+
+    await state.update_data(phone=phone)
+
+    skip_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="⏭️ Пропустить")]],
+        resize_keyboard=True
+    )
+    await message.answer(REGISTRATION_MESSAGES['email'], reply_markup=skip_kb)
+    await state.set_state(RegistrationStates.waiting_for_email)
+
+
+@router.message(RegistrationStates.waiting_for_email)
+async def process_email(message: Message, state: FSMContext):
+    import re
+    email = None
+    if message.text != "⏭️ Пропустить":
+        email = (message.text or "").strip()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            await message.answer(
+                "❌ Неверный формат email. Пример: user@example.com\n\n"
+                "Или нажмите '⏭️ Пропустить'"
+            )
+            return
+
     data = await state.get_data()
     tg_id = message.from_user.id
-
     user_manager = UserManager(async_session_maker)
 
     success = await user_manager.update_user(
@@ -336,9 +385,11 @@ async def process_weight(message: Message, state: FSMContext):
         last_name=data.get('last_name'),
         middle_name=data.get('middle_name'),
         birth_date=data.get('birth_date'),
-        weight=weight
+        weight=data.get('weight'),
+        phone=data.get('phone'),
+        email=email,
     )
-    
+
     if success:
         await message.answer(
             REGISTRATION_MESSAGES['complete'],
@@ -350,8 +401,9 @@ async def process_weight(message: Message, state: FSMContext):
             "❌ Произошла ошибка при сохранении данных. Попробуйте позже.",
             reply_markup=ReplyKeyboardRemove()
         )
-    
+
     await state.clear()
+
 
 @router.callback_query(lambda c: c.data == "profile:edit_fields")
 async def profile_edit_fields(callback, state: FSMContext):

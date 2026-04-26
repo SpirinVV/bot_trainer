@@ -2,6 +2,8 @@ from typing import Optional, Callable, List, Dict, Any
 import logging
 from datetime import datetime, date as date_type, time as time_type
 
+from utils.payment_decorators import requires_payment_info
+
 from aiogram import Router, Bot, F
 from aiogram.filters import StateFilter
 from aiogram.types import (
@@ -122,6 +124,8 @@ class AdminPanel:
         router.callback_query.register(self._on_review_user, lambda cq: cq.data and cq.data.startswith(self.REVIEW_USER_PREFIX))
         router.callback_query.register(self._on_edit_user, lambda cq: cq.data and cq.data.startswith("admin:edit_user:"))
         router.callback_query.register(self._on_edit_field, lambda cq: cq.data and cq.data.startswith("admin:edit_field:"))
+        router.callback_query.register(self._on_delete_user, lambda cq: cq.data and cq.data.startswith("admin:delete_user:"))
+        router.callback_query.register(self._on_confirm_delete_user, lambda cq: cq.data and cq.data.startswith("admin:confirm_delete_user:"))
         router.callback_query.register(self._on_back_to_panel, lambda cq: cq.data == self.BACK_TO_PANEL)
         router.callback_query.register(self._on_list_users_page, lambda cq: cq.data and cq.data.startswith(self.LIST_USERS_PAGE))
         
@@ -332,6 +336,34 @@ class AdminPanel:
     async def _on_back_to_panel(self, callback: CallbackQuery):
         await callback.answer()
         await callback.message.edit_text("Админская панель", reply_markup=self.markup())
+
+    async def _on_delete_user(self, callback: CallbackQuery):
+        await callback.answer()
+        uid = (callback.data or "").split("admin:delete_user:")[-1]
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"admin:confirm_delete_user:{uid}"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data=f"{self.REVIEW_USER_PREFIX}{uid}"),
+            ]
+        ])
+        await callback.message.edit_text(
+            "⚠️ <b>Удаление пользователя</b>\n\nВы уверены? Это действие нельзя отменить.",
+            reply_markup=kb,
+        )
+
+    async def _on_confirm_delete_user(self, callback: CallbackQuery):
+        await callback.answer()
+        uid = (callback.data or "").split("admin:confirm_delete_user:")[-1]
+        try:
+            from sqlalchemy import delete as sa_delete
+            from models.user import User as UserModel
+            async with async_session_maker() as session:
+                await session.execute(sa_delete(UserModel).where(UserModel.id == int(uid)))
+                await session.commit()
+            await callback.message.edit_text(f"✅ Пользователь удалён.", reply_markup=None)
+        except Exception:
+            logger.exception("Ошибка при удалении пользователя")
+            await callback.message.answer("❌ Ошибка при удалении пользователя.")
 
     async def _on_report(self, callback: CallbackQuery):
         await callback.answer()
@@ -798,6 +830,7 @@ class AdminPanel:
                 prices=[{"label": "Стоимость тренировки", "amount": int(workout.price * 100)}],
             )
 
+    @requires_payment_info
     async def _on_pay_link(self, callback: CallbackQuery):
         await callback.answer()
         workout_id = int(callback.data.split(":")[1])
@@ -806,18 +839,6 @@ class AdminPanel:
         user = await UserManager(async_session_maker).get_by_tg_id(user_tg_id)
         if not user:
             await callback.message.answer("Пользователь не найден в системе.")
-            return
-
-        if not user.phone or not user.email:
-            missing = []
-            if not user.phone:
-                missing.append("номер телефона")
-            if not user.email:
-                missing.append("email")
-            await callback.answer(
-                f"⚠️ Для оплаты укажите: {' и '.join(missing)}. Используйте /profile",
-                show_alert=True,
-            )
             return
 
         async with async_session_maker() as session:

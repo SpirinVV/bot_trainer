@@ -7,6 +7,8 @@ class RegistrationStates(StatesGroup):
     waiting_for_middle_name = State()
     waiting_for_birth_date = State()
     waiting_for_weight = State()
+    waiting_for_phone = State()
+    waiting_for_email = State()
 
 class AdminStates(StatesGroup):
     waiting_for_edit_first_name = State()
