@@ -19,7 +19,6 @@ from aiogram.enums import ParseMode
 
 from payments import PaymentService, PaymentNotification
 from database import async_session_maker, init_db
-from managers.user import UserManager
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -74,7 +73,7 @@ async def yookassa_webhook(request: Request) -> Response:
         notification = PaymentNotification(**body)
         
         # Обработать webhook
-        success = await PaymentService.handle_webhook(notification, user_manager)
+        success = await PaymentService.handle_webhook(notification, bot)
         
         if success:
             # ВАЖНО: Обязательно ответить 200 OK

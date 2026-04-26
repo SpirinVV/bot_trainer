@@ -14,6 +14,8 @@ class AdminStates(StatesGroup):
     waiting_for_edit_middle_name = State()
     waiting_for_edit_birth_date = State()
     waiting_for_edit_weight = State()
+    waiting_for_edit_phone = State()
+    waiting_for_edit_email = State()
 
 class UserProfileStates(StatesGroup):
     waiting_for_edit_first_name = State()

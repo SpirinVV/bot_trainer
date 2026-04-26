@@ -587,6 +587,48 @@ async def edit_weight(message: Message, state: FSMContext):
     await state.clear()
 
 
+@router.message(AdminStates.waiting_for_edit_phone)
+async def edit_phone_admin(message: Message, state: FSMContext):
+    import re
+    phone = (message.text or "").strip()
+    phone = re.sub(r"[^\d+]", "", phone)
+    if not re.match(r"^\+?7\d{10}$|^8\d{10}$", phone):
+        await message.answer(
+            "❌ Неверный формат телефона.\n"
+            "Введите номер в формате 79991234567 или +79991234567"
+        )
+        return
+    if phone.startswith("8"):
+        phone = "7" + phone[1:]
+    data = await state.get_data()
+    user_id = data.get("editing_user_id")
+    user_manager = UserManager(async_session_maker)
+    success = await user_manager.update_user_by_id(user_id, phone=phone)
+    if success:
+        await message.answer(f"✅ Телефон обновлен на {phone}")
+    else:
+        await message.answer("❌ Ошибка при обновлении телефона.")
+    await state.clear()
+
+
+@router.message(AdminStates.waiting_for_edit_email)
+async def edit_email_admin(message: Message, state: FSMContext):
+    import re
+    email = (message.text or "").strip()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        await message.answer("❌ Неверный формат email. Пример: user@example.com")
+        return
+    data = await state.get_data()
+    user_id = data.get("editing_user_id")
+    user_manager = UserManager(async_session_maker)
+    success = await user_manager.update_user_by_id(user_id, email=email)
+    if success:
+        await message.answer(f"✅ Email обновлен на {email}")
+    else:
+        await message.answer("❌ Ошибка при обновлении email.")
+    await state.clear()
+
+
 @router.message(UserProfileStates.waiting_for_edit_first_name)
 async def profile_edit_first_name(message: Message, state: FSMContext):
     """Редактирование имени в профиле"""

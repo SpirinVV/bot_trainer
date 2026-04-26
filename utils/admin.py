@@ -303,16 +303,20 @@ class AdminPanel:
                 "middle_name": AdminStates.waiting_for_edit_middle_name,
                 "birth_date": AdminStates.waiting_for_edit_birth_date,
                 "weight": AdminStates.waiting_for_edit_weight,
+                "phone": AdminStates.waiting_for_edit_phone,
+                "email": AdminStates.waiting_for_edit_email,
             }
-            
+
             field_to_label = {
                 "first_name": "Имя",
                 "last_name": "Фамилия",
                 "middle_name": "Отчество",
                 "birth_date": "Дата рождения (ДД.МММ.ГГГГ)",
                 "weight": "Вес (в кг)",
+                "phone": "Телефон (79991234567)",
+                "email": "Email",
             }
-            
+
             if field_name not in field_to_state:
                 await callback.message.answer(f"Поле '{field_name}' не поддерживается для редактирования.")
                 return
