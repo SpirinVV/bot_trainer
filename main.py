@@ -36,16 +36,13 @@ async def main():
     user_manager = UserManager(async_session_maker)
 
     import os
-    import socket
-    from aiohttp import ClientTimeout, TCPConnector
     from aiogram.client.session.aiohttp import AiohttpSession
 
     proxy_url = os.environ.get("TELEGRAM_PROXY") or os.environ.get("HTTPS_PROXY")
 
     session = AiohttpSession(
         proxy=proxy_url,
-        connector=TCPConnector(family=socket.AF_INET),  # force IPv4, no IPv6 in container
-        timeout=ClientTimeout(total=65, sock_connect=15, sock_read=35),
+        timeout=35,  # plain seconds — aiogram adds polling_timeout (25) to get request_timeout
     )
 
     bot = Bot(
