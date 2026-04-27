@@ -53,21 +53,11 @@ async def shutdown_event():
 
 @app.post("/webhook/yookassa")
 async def yookassa_webhook(request: Request) -> Response:
-    """
-    Webhook endpoint для получения уведомлений от Yookassa
-    
-    Документация: https://yookassa.ru/developers/using-api/webhooks
-    
-    Требования:
-    - HTTPS протокол
-    - Port 443 или 8443
-    - Ответить HTTP 200 в течение 30 секунд
-    """
-    logger.info("🔔 Получен webhook от Yookassa")
-    
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info(f"🔔 Webhook от {client_ip}")
     try:
-        # Получить JSON из запроса
         body = await request.json()
+        logger.info(f"   event={body.get('event')} payment_id={body.get('object', {}).get('id')} status={body.get('object', {}).get('status')}")
         
         # Создать объект уведомления
         notification = PaymentNotification(**body)
@@ -76,16 +66,13 @@ async def yookassa_webhook(request: Request) -> Response:
         success = await PaymentService.handle_webhook(notification, bot)
         
         if success:
-            # ВАЖНО: Обязательно ответить 200 OK
-            logger.info("✓ Webhook обработан успешно")
             return Response(status_code=200)
         else:
             logger.error("❌ Ошибка обработки webhook")
-            return Response(status_code=200)  # Даже при ошибке отвечаем 200 чтобы не повторять попытки
-            
+            return Response(status_code=200)
+
     except Exception as e:
         logger.error(f"❌ Критическая ошибка webhook: {str(e)}", exc_info=True)
-        # Отвечаем 200 чтобы Yookassa не повторял попытку
         return Response(status_code=200)
 
 

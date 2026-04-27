@@ -1,6 +1,16 @@
 # Используем официальный образ Python 3.12 slim
 FROM python:3.12-slim
 
+# Устанавливаем локали
+RUN apt-get update && apt-get install -y locales && \
+    sed -i '/ru_RU.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=ru_RU.UTF-8
+ENV LANGUAGE=ru_RU:ru
+ENV LC_ALL=ru_RU.UTF-8
+
 # Создаем пользователя и группу botuser
 RUN groupadd -r botuser && useradd -r -g botuser -u 1000 botuser
 
