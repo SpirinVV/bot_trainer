@@ -11,7 +11,7 @@ db_dir.mkdir(exist_ok=True, parents=True)
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True,
+    echo=False,
     future=True
 )
 

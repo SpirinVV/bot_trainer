@@ -96,15 +96,12 @@ class PaymentService:
                     payment_data["receipt"]["customer"]["phone"] = customer_phone
 
             payment = Payment.create(payment_data, uuid.uuid4())
-            
-            logger.info(f"✓ Платеж создан: {payment.id}")
-            
             return {
                 "id": payment.id,
                 "status": payment.status,
                 "confirmation_url": payment.confirmation.confirmation_url if payment.confirmation else None,
                 "amount": float(payment.amount.value),
-                "created_at": payment.created_at.isoformat() if payment.created_at else None
+                "created_at": payment.created_at if isinstance(payment.created_at, str) else (payment.created_at.isoformat() if payment.created_at else None)
             }
         except Exception as e:
             logger.error(f"❌ Ошибка создания платежа: {str(e)}")
@@ -128,7 +125,7 @@ class PaymentService:
                 "status": payment.status,
                 "amount": float(payment.amount.value),
                 "paid": payment.paid,
-                "created_at": payment.created_at.isoformat() if payment.created_at else None
+                "created_at": payment.created_at if isinstance(payment.created_at, str) else (payment.created_at.isoformat() if payment.created_at else None)
             }
         except Exception as e:
             logger.error(f"❌ Ошибка получения платежа {payment_id}: {str(e)}")
@@ -136,15 +133,11 @@ class PaymentService:
 
     @staticmethod
     async def handle_webhook(notification: PaymentNotification, bot=None) -> bool:
-        logger.info(f"📬 Получено уведомление: {notification.event}")
-
         try:
             payment_obj = notification.object
             payment_id = payment_obj.get("id")
             event = notification.event
             status = payment_obj.get("status")
-
-            logger.info(f"   ID платежа: {payment_id}, статус: {status}")
 
             metadata = payment_obj.get("metadata", {})
             workout_id_str = metadata.get("workout_id")
@@ -194,7 +187,6 @@ class PaymentService:
                                 )
                             )
                         await session.commit()
-                        logger.info(f"✓ workout_participants обновлен: workout={workout_id}, user={user_id}")
 
                         if bot and tg_id_str:
                             workout = await session.get(WorkoutModel, workout_id)
@@ -246,11 +238,9 @@ class PaymentService:
                 return True
 
             elif event == "payment.waiting_for_capture":
-                logger.info(f"⏳ Платеж ожидает подтверждения: {payment_id}")
                 return True
 
             else:
-                logger.warning(f"⚠️ Неизвестное событие: {event}")
                 return True
 
         except Exception as e:

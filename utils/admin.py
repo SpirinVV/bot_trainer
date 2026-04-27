@@ -847,6 +847,21 @@ class AdminPanel:
                 await callback.message.answer("Тренировка не найдена.")
                 return
 
+            existing = (await session.execute(
+                select(wp_table).where(
+                    (wp_table.c.workout_id == workout_id) &
+                    (wp_table.c.user_id == user.id)
+                )
+            )).first()
+            if existing:
+                pd = existing.payment_details or {}
+                if pd.get("status") == "success":
+                    await callback.answer("✅ Вы уже записаны на эту тренировку.", show_alert=True)
+                    return
+                if pd.get("status") == "pending":
+                    await callback.answer("⏳ Оплата уже в процессе. Используйте ссылку из предыдущего сообщения.", show_alert=True)
+                    return
+
             try:
                 from payments import PaymentService, WorkoutPaymentHelper
                 payment = await PaymentService.create_payment(
@@ -892,11 +907,15 @@ class AdminPanel:
                 await session.commit()
 
                 confirmation_url = payment.get("confirmation_url")
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                pay_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="💳 Оплатить через СБП", url=confirmation_url)
+                ]])
                 await callback.message.answer(
-                    f"💳 Для оплаты перейдите по ссылке:\n\n"
-                    f"{confirmation_url}\n\n"
+                    f"Тренировка: <b>{workout.name}</b>\n"
+                    f"Стоимость: <b>{workout.price} ₽</b>\n\n"
                     f"После оплаты вы получите подтверждение.",
-                    disable_web_page_preview=True,
+                    reply_markup=pay_kb,
                 )
             except Exception as e:
                 logger.error(f"Ошибка создания платежа СБП: {e}")
