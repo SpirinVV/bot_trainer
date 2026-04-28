@@ -80,7 +80,28 @@ def _write_to_spreadsheet(
     except gspread.WorksheetNotFound:
         ws = spreadsheet.add_worksheet(title=sheet_name, rows=len(rows) + 10, cols=10)
 
+    data_rows = len(rows)
     ws.update("A1", rows, value_input_option="USER_ENTERED")
-    ws.format("A1:F1", {"textFormat": {"bold": True}})
+
+    # Заголовок
+    ws.format("A1:F1", {
+        "backgroundColor": {"red": 0.26, "green": 0.52, "blue": 0.96},
+        "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+        "horizontalAlignment": "CENTER",
+    })
+    ws.freeze(rows=1)
+
+    # Строка итогов
+    total_row = data_rows
+    ws.format(f"A{total_row}:F{total_row}", {
+        "backgroundColor": {"red": 0.85, "green": 0.92, "blue": 0.76},
+        "textFormat": {"bold": True},
+    })
+
+    # Чередование строк одним batch-запросом
+    stripe_fmt = {"backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}}
+    batch = [{"range": f"A{i}:F{i}", "format": stripe_fmt} for i in range(2, data_rows - 1) if i % 2 == 0]
+    if batch:
+        ws.batch_format(batch)
 
     return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit#gid={ws.id}"

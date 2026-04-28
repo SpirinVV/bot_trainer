@@ -1,30 +1,9 @@
-"""
-sync_to_sheets.py
-─────────────────
-Ежедневный скрипт (23:00): читает данные из SQLAlchemy БД
-и полностью перезаписывает Google Таблицу (3 листа).
-
-Листы:
-  1. Users           — все пользователи
-  2. Workouts        — все тренировки
-  3. Participants    — участники и приглашённые
-
-Установка:
-  pip install gspread google-auth sqlalchemy
-
-Настройка Google:
-  1. console.cloud.google.com → проект → включить Sheets API + Drive API
-  2. IAM → Service Accounts → создать → скачать JSON-ключ → положить рядом как service_account.json
-  3. Google Таблица → Поделиться → вставить client_email из JSON-ключа (Editor)
-"""
-
 import os
 import sys
 import logging
-from datetime import datetime
+from datetime import datetime, date as date_type
 from typing import Any
 
-# Добавляем родительскую директорию в sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
@@ -36,7 +15,7 @@ from sqlalchemy import select
 
 from models.user import User
 from models.workout import Workout
-#pip install gspread google-auth sqlalchemy
+
 # ─── Конфигурация ────────────────────────────────────────────────────────────
 
 GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/app/service_account.json")
@@ -48,8 +27,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# ─── Logging ─────────────────────────────────────────────────────────────────
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)s  %(message)s",
@@ -60,11 +37,12 @@ log = logging.getLogger(__name__)
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def safe(value: Any) -> str:
-    """Любое значение → строка. None → пустая строка."""
     if value is None:
-        return ""
+        return "—"
     if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d %H:%M:%S")
+        return value.strftime("%d.%m.%Y %H:%M")
+    if isinstance(value, date_type):
+        return value.strftime("%d.%m.%Y")
     return str(value)
 
 
@@ -83,22 +61,32 @@ def get_or_create_worksheet(spreadsheet: gspread.Spreadsheet, title: str) -> gsp
 
 
 def write_sheet(spreadsheet: gspread.Spreadsheet, title: str, rows: list[list]):
-    """Очищает лист и записывает rows. Создаёт лист если не существует."""
     ws = get_or_create_worksheet(spreadsheet, title)
     ws.clear()
-    if rows:
-        ws.update("A1", rows, value_input_option="USER_ENTERED")
-    log.info("Лист '%-14s': %d строк (включая заголовок)", title, len(rows))
+    if not rows:
+        return
+    ws.update("A1", rows, value_input_option="USER_ENTERED")
+
+    header_range = f"A1:{chr(ord('A') + len(rows[0]) - 1)}1"
+    ws.format(header_range, {
+        "backgroundColor": {"red": 0.26, "green": 0.52, "blue": 0.96},
+        "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+        "horizontalAlignment": "CENTER",
+    })
+    ws.freeze(rows=1)
+
+    log.info("Лист '%-20s': %d строк", title, len(rows) - 1)
 
 
-# ─── Сборка данных ───────────────────────────────────────────────────────────
+# ─── Данные ──────────────────────────────────────────────────────────────────
 
 async def build_users_rows(session: AsyncSession) -> list[list]:
     headers = [
-        "id", "tg_id", "tg_username",
-        "first_name", "last_name", "middle_name",
-        "birth_date", "age", "weight_kg",
-        "created_at", "updated_at",
+        "ID", "Telegram ID", "Username",
+        "Имя", "Фамилия", "Отчество",
+        "Дата рождения", "Возраст", "Вес (кг)",
+        "Телефон", "Email",
+        "Зарегистрирован", "Обновлён",
     ]
     rows = [headers]
     result = await session.scalars(select(User).order_by(User.id))
@@ -106,13 +94,15 @@ async def build_users_rows(session: AsyncSession) -> list[list]:
         rows.append([
             safe(u.id),
             safe(u.tg_id),
-            safe(u.tg_username),
+            f"@{u.tg_username}" if u.tg_username else "—",
             safe(u.first_name),
             safe(u.last_name),
             safe(u.middle_name),
             safe(u.birth_date),
             safe(u.age),
             safe(u.weight),
+            safe(u.phone),
+            safe(u.email),
             safe(u.created_at),
             safe(u.updated_at),
         ])
@@ -121,10 +111,9 @@ async def build_users_rows(session: AsyncSession) -> list[list]:
 
 async def build_workouts_rows(session: AsyncSession) -> list[list]:
     headers = [
-        "id", "name", "date", "time",
-        "latitude", "longitude",
-        "price", "is_public", "comment",
-        "participants_count", "invited_count",
+        "ID", "Название", "Дата", "Время",
+        "Тип", "Цена (руб.)", "Участников", "Приглашено",
+        "Комментарий",
     ]
     rows = [headers]
     result = await session.scalars(select(Workout).order_by(Workout.date, Workout.time))
@@ -133,41 +122,37 @@ async def build_workouts_rows(session: AsyncSession) -> list[list]:
             safe(w.id),
             safe(w.name),
             safe(w.date),
-            safe(w.time),
-            safe(w.latitude),
-            safe(w.longitude),
-            safe(w.price),
-            "да" if w.is_public else "нет",
-            safe(w.comment),
+            w.time.strftime("%H:%M"),
+            "Публичная" if w.is_public else "Приватная",
+            safe(w.price) if w.price else "Бесплатно",
             len(w.participants),
             len(w.users_invited),
+            safe(w.comment),
         ])
     return rows
 
 
 async def build_participants_rows(session: AsyncSession) -> list[list]:
-    """
-    Один лист — и участники (role=участник), и приглашённые (role=приглашён).
-    Удобно фильтровать по колонке role прямо в таблице.
-    """
     headers = [
-        "workout_id", "workout_name", "workout_date", "workout_time",
-        "user_id", "full_name", "tg_username", "role",
+        "ID тренировки", "Тренировка", "Дата", "Время",
+        "ID клиента", "ФИО", "Username", "Роль",
     ]
     rows = [headers]
     result = await session.scalars(select(Workout).order_by(Workout.date, Workout.time))
     for w in result:
         for u in w.participants:
             rows.append([
-                safe(w.id), safe(w.name), safe(w.date), safe(w.time),
-                safe(u.id), safe(u.full_name), safe(u.tg_username),
-                "участник",
+                safe(w.id), safe(w.name), safe(w.date), w.time.strftime("%H:%M"),
+                safe(u.id), safe(u.full_name),
+                f"@{u.tg_username}" if u.tg_username else "—",
+                "Участник",
             ])
         for u in w.users_invited:
             rows.append([
-                safe(w.id), safe(w.name), safe(w.date), safe(w.time),
-                safe(u.id), safe(u.full_name), safe(u.tg_username),
-                "приглашён",
+                safe(w.id), safe(w.name), safe(w.date), w.time.strftime("%H:%M"),
+                safe(u.id), safe(u.full_name),
+                f"@{u.tg_username}" if u.tg_username else "—",
+                "Приглашён",
             ])
     return rows
 
@@ -177,10 +162,9 @@ async def build_participants_rows(session: AsyncSession) -> list[list]:
 async def main():
     log.info("=== Синхронизация с Google Sheets начата ===")
 
-    # 1. Читаем всё из БД одной сессией
     engine = create_async_engine(DATABASE_URL, future=True)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
+
     async with async_session() as session:
         log.info("Читаем данные из БД...")
         users_rows        = await build_users_rows(session)
@@ -188,24 +172,21 @@ async def main():
         participants_rows = await build_participants_rows(session)
 
     log.info(
-        "Получено: %d пользователей, %d тренировок, %d строк участников",
+        "Получено: %d пользователей, %d тренировок, %d записей участников",
         len(users_rows) - 1,
         len(workouts_rows) - 1,
         len(participants_rows) - 1,
     )
 
-    # 2. Авторизация в Google
     log.info("Авторизация в Google...")
     gc = get_gspread_client()
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
 
-    # 3. Записываем листы
-    write_sheet(spreadsheet, "Users",        users_rows)
-    write_sheet(spreadsheet, "Workouts",     workouts_rows)
-    write_sheet(spreadsheet, "Participants", participants_rows)
+    write_sheet(spreadsheet, "Пользователи", users_rows)
+    write_sheet(spreadsheet, "Тренировки",   workouts_rows)
+    write_sheet(spreadsheet, "Участники",    participants_rows)
 
     log.info("=== Готово ===")
-    
     await engine.dispose()
 
 
