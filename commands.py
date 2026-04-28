@@ -52,14 +52,13 @@ def registered_only(func: Callable) -> Callable:
     @wraps(func)
     async def wrapper(message: Message, *args, **kwargs) -> Any:
         tg_id = message.from_user.id
-        async with async_session_maker() as session:
-            user_manager = UserManager(session)
-            if not await user_manager.exists(tg_id):
-                await message.answer(
-                    "❌ Вы не зарегистрированы. Пожалуйста, используйте /register для заполнения данных."
-                )
-                logger.warning(f"Попытка доступа к зарегистрированной команде от незарегистрированного пользователя {tg_id}")
-                return
+        user_manager = UserManager(async_session_maker)
+        if not await user_manager.exists(tg_id):
+            await message.answer(
+                "❌ Вы не зарегистрированы. Пожалуйста, используйте /register для заполнения данных."
+            )
+            logger.warning(f"Попытка доступа к зарегистрированной команде от незарегистрированного пользователя {tg_id}")
+            return
         return await func(message, *args, **kwargs)
     return wrapper
 
@@ -134,7 +133,7 @@ async def cmd_profile(message: Message, state: FSMContext):
         [InlineKeyboardButton(text=UI.DELETE, callback_data="profile:delete_account")],
     ])
 
-    await message.answer(user.get_text_display_tg(), reply_markup=kb, parse_mode='Markdown')
+    await message.answer(user.get_text_display_tg(), reply_markup=kb, parse_mode='HTML')
 
 
 @router.message(Command("status"))
@@ -160,9 +159,8 @@ async def cmd_admin(message: Message):
 @router.message(Command("stats"))
 @admin_only
 async def cmd_stats(message: Message):
-    async with async_session_maker() as session:
-        user_manager = UserManager(session)
-        total_users = await user_manager.count()
+    user_manager = UserManager(async_session_maker)
+    total_users = await user_manager.count()
     
     await message.answer(
         f"📊 <b>Статистика бота</b>\n\n"

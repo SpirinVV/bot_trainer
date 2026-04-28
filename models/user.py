@@ -84,11 +84,12 @@ class User(Base):
         }
 
     def get_text_display_tg(self):
-
+        from html import escape
+        name = escape(self.full_name)
         if self.tg_username:
-            name_link = f"[{self.full_name}](https://t.me/{self.tg_username})"
+            name_link = f'<a href="https://t.me/{self.tg_username}">{name}</a>'
         else:
-            name_link = self.full_name
+            name_link = name
 
         return (
             f"👤 Детали пользователя:\n"

@@ -20,6 +20,7 @@ class Settings:
     PAYMENT_MODE: str
     YOOKASSA_ACCOUNT_ID: str
     YOOKASSA_SECRET_KEY: str
+    API_PORT: int
 
     def __post_init__(self):
         if not self.BOT_TOKEN:
@@ -58,6 +59,7 @@ def load_settings() -> Settings:
         PAYMENT_MODE=os.getenv("PAYMENT_MODE", "TG"),
         YOOKASSA_ACCOUNT_ID=os.getenv("YOOKASSA_ACCOUNT_ID", ""),
         YOOKASSA_SECRET_KEY=os.getenv("YOOKASSA_SECRET_KEY", ""),
+        API_PORT=int(os.getenv("API_PORT", "8000")),
     )
 
 

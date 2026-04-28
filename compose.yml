@@ -36,7 +36,7 @@ services:
     environment:
       - TZ=Europe/Moscow
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:${API_PORT:-8000}"
     volumes:
       - ./data:/app/data
       - ./api.py:/app/api.py
@@ -50,7 +50,7 @@ services:
       - 8.8.4.4
     networks:
       - bot_network
-    command: ["python", "-u", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["python", "-u", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "${API_PORT:-8000}"]
 
   backuper:
     build: .

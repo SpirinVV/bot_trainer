@@ -235,7 +235,7 @@ class AdminPanel:
                 [InlineKeyboardButton(text=UI.EDIT, callback_data=f"admin:edit_user:{getattr(user,'id',getattr(user,'tg_id','0'))}")],
                 [InlineKeyboardButton(text=UI.DELETE, callback_data=f"admin:delete_user:{getattr(user,'id',getattr(user,'tg_id','0'))}")],
             ])
-            await callback.message.edit_text(user.get_text_display_tg(), reply_markup=kb, parse_mode="Markdown")
+            await callback.message.edit_text(user.get_text_display_tg(), reply_markup=kb, parse_mode="HTML")
         except Exception:
             logger.exception("Ошибка показа деталей пользователя")
             await callback.message.answer("Ошибка при показе деталей пользователя.")
