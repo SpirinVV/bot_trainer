@@ -33,7 +33,7 @@ from models.user import User
 from managers.user import UserManager
 from database import async_session_maker
 from models.workout import Workout as WorkoutModel, workout_participants as wp_table
-from states import AdminStates
+from states import AdminStates, ReportStates
 from config import settings
 
 from utils.superlist import Superlist, SuperlistSelection
@@ -160,6 +160,9 @@ class AdminPanel:
             StateFilter(AdminWorkoutStates.waiting_for_invited_selection)
         )
 
+        router.callback_query.register(self._on_report_workouts_period, lambda cq: cq.data == "admin:report:workouts_period")
+        router.callback_query.register(self._process_report_start_date, SimpleCalendarCallback.filter(), StateFilter(ReportStates.waiting_for_start_date))
+        router.callback_query.register(self._process_report_end_date, SimpleCalendarCallback.filter(), StateFilter(ReportStates.waiting_for_end_date))
         router.callback_query.register(self._process_simple_calendar, SimpleCalendarCallback.filter())
         router.callback_query.register(self._process_dialog_calendar, DialogCalendarCallback.filter())
 
@@ -367,7 +370,105 @@ class AdminPanel:
 
     async def _on_report(self, callback: CallbackQuery):
         await callback.answer()
-        await callback.message.answer(UI.REPORT)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📅 По тренировкам за период", callback_data="admin:report:workouts_period")],
+            [InlineKeyboardButton(text=UI.BACK_TO_PANEL, callback_data=self.BACK_TO_PANEL)],
+        ])
+        await callback.message.edit_text("📊 <b>Отчеты</b>\n\nВыберите тип отчета:", reply_markup=kb)
+
+    async def _on_report_workouts_period(self, callback: CallbackQuery, state: FSMContext):
+        await callback.answer()
+        user_locale = await get_user_locale(callback.from_user)
+        try:
+            calendar = SimpleCalendar(locale=user_locale, show_alerts=True)
+        except Exception as e:
+            logger.debug(f"Calendar locale '{user_locale}' unsupported, falling back to 'en'.")
+            try:
+                calendar = SimpleCalendar(locale="en", show_alerts=True)
+            except Exception:
+                calendar = SimpleCalendar(show_alerts=True)
+
+        await state.set_state(ReportStates.waiting_for_start_date)
+        kb = await calendar.start_calendar()
+        await callback.message.answer("📅 Выберите <b>начальную дату</b> периода:", reply_markup=kb)
+
+    async def _process_report_start_date(self, callback: CallbackQuery, callback_data, state: FSMContext):
+        user_locale = await get_user_locale(callback.from_user)
+        try:
+            calendar = SimpleCalendar(locale=user_locale, show_alerts=True)
+        except Exception as e:
+            logger.debug(f"Calendar locale '{user_locale}' unsupported, falling back to 'en'.")
+            try:
+                calendar = SimpleCalendar(locale="en", show_alerts=True)
+            except Exception:
+                calendar = SimpleCalendar(show_alerts=True)
+
+        selected, date = await calendar.process_selection(callback, callback_data)
+        if not selected:
+            return
+
+        date_only = date.date() if hasattr(date, 'date') else date
+        await callback.answer()
+        await state.update_data(report_start_date=date_only)
+        kb = await calendar.start_calendar()
+        await callback.message.answer(
+            f"✅ Начало: <b>{date_only.strftime('%d.%m.%Y')}</b>\n\nТеперь выберите <b>конечную дату</b>:",
+            reply_markup=kb,
+        )
+        await state.set_state(ReportStates.waiting_for_end_date)
+
+    async def _process_report_end_date(self, callback: CallbackQuery, callback_data, state: FSMContext):
+        user_locale = await get_user_locale(callback.from_user)
+        try:
+            calendar = SimpleCalendar(locale=user_locale, show_alerts=True)
+        except Exception as e:
+            logger.debug(f"Calendar locale '{user_locale}' unsupported, falling back to 'en'.")
+            try:
+                calendar = SimpleCalendar(locale="en", show_alerts=True)
+            except Exception:
+                calendar = SimpleCalendar(show_alerts=True)
+
+        selected, date = await calendar.process_selection(callback, callback_data)
+        if not selected:
+            return
+
+        date_only = date.date() if hasattr(date, 'date') else date
+        data = await state.get_data()
+        start_date = data.get('report_start_date')
+
+        if date_only < start_date:
+            await callback.answer("❌ Конечная дата не может быть раньше начальной!", show_alert=True)
+            kb = await calendar.start_calendar()
+            await callback.message.edit_reply_markup(reply_markup=kb)
+            return
+
+        await callback.answer()
+        await state.clear()
+        await self._report_generate_and_send(callback.message, start_date, date_only)
+
+    async def _report_generate_and_send(self, message: Message, start_date: date_type, end_date: date_type):
+        await message.answer(
+            f"⏳ Генерирую отчет за период "
+            f"<b>{start_date.strftime('%d.%m.%Y')}</b> — <b>{end_date.strftime('%d.%m.%Y')}</b>..."
+        )
+        try:
+            from utils.report_generator import generate_workouts_report
+            async with async_session_maker() as session:
+                url = await generate_workouts_report(
+                    session=session,
+                    start_date=start_date,
+                    end_date=end_date,
+                    service_account_file=settings.GOOGLE_SERVICE_ACCOUNT_FILE,
+                    spreadsheet_id=settings.REPORTS_SPREADSHEET_ID,
+                )
+            await message.answer(
+                f"✅ Отчет готов!\n\n"
+                f"📅 Период: {start_date.strftime('%d.%m.%Y')} — {end_date.strftime('%d.%m.%Y')}\n\n"
+                f'🔗 <a href="{url}">Открыть в Google Sheets</a>'
+            )
+        except Exception:
+            logger.exception("Ошибка генерации отчета")
+            await message.answer("❌ Ошибка при создании отчета. Проверьте логи.")
 
     async def _start_create_workout(self, callback: CallbackQuery, state: FSMContext):
         await callback.answer()
@@ -385,7 +486,7 @@ class AdminPanel:
         try:
             calendar = SimpleCalendar(locale=user_locale, show_alerts=True)
         except Exception as e:
-            logger.warning(f"Calendar locale '{user_locale}' unsupported: {e}; falling back to 'en'.")
+            logger.debug(f"Calendar locale '{user_locale}' unsupported, falling back to 'en'.")
             try:
                 calendar = SimpleCalendar(locale="en", show_alerts=True)
             except Exception:
@@ -626,7 +727,7 @@ class AdminPanel:
         try:
             calendar = SimpleCalendar(locale=user_locale, show_alerts=True)
         except Exception as e:
-            logger.warning(f"Calendar locale '{user_locale}' unsupported: {e}; falling back to 'en'.")
+            logger.debug(f"Calendar locale '{user_locale}' unsupported, falling back to 'en'.")
             try:
                 calendar = SimpleCalendar(locale="en", show_alerts=True)
             except Exception:
@@ -652,7 +753,7 @@ class AdminPanel:
         try:
             dialog_cal = DialogCalendar(locale=user_locale)
         except Exception as e:
-            logger.warning(f"DialogCalendar locale '{user_locale}' unsupported: {e}; falling back to 'en'.")
+            logger.debug(f"DialogCalendar locale '{user_locale}' unsupported, falling back to 'en'.")
             try:
                 dialog_cal = DialogCalendar(locale="en")
             except Exception:

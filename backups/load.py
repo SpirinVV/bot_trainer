@@ -39,8 +39,8 @@ from models.workout import Workout
 #pip install gspread google-auth sqlalchemy
 # ─── Конфигурация ────────────────────────────────────────────────────────────
 
-GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", os.path.join(os.path.dirname(__file__), "service_account.json"))
-SPREADSHEET_ID              = os.getenv("SPREADSHEET_ID", "1Xt3fqo0PMiIAJ7nIEvkcHcJpZIkdm465Z8XwjUqCkYg")
+GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/app/service_account.json")
+SPREADSHEET_ID              = os.getenv("SPREADSHEET_ID", "")
 DATABASE_URL                = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///data/bot.db")
 
 SCOPES = [

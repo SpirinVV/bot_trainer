@@ -21,6 +21,8 @@ class Settings:
     YOOKASSA_ACCOUNT_ID: str
     YOOKASSA_SECRET_KEY: str
     API_PORT: int
+    GOOGLE_SERVICE_ACCOUNT_FILE: str
+    REPORTS_SPREADSHEET_ID: str
 
     def __post_init__(self):
         if not self.BOT_TOKEN:
@@ -60,6 +62,8 @@ def load_settings() -> Settings:
         YOOKASSA_ACCOUNT_ID=os.getenv("YOOKASSA_ACCOUNT_ID", ""),
         YOOKASSA_SECRET_KEY=os.getenv("YOOKASSA_SECRET_KEY", ""),
         API_PORT=int(os.getenv("API_PORT", "8000")),
+        GOOGLE_SERVICE_ACCOUNT_FILE=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "./backups/service_account.json"),
+        REPORTS_SPREADSHEET_ID=os.getenv("REPORTS_SPREADSHEET_ID", ""),
     )
 
 

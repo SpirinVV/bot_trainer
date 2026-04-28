@@ -32,7 +32,7 @@ class UI:
     SKIP_STEP = f"{SKIP} Пропустить"
     EDIT = "✏️ Изменить"
     DELETE = "🗑️ Удалить"
-    REPORT = f"{CHART} Отчет (TODO)"
+    REPORT = f"{CHART} Отчеты"
     CREATE_WORKOUT = f"{PLUS} Создать тренировку"
     LIST_USERS = f"{PEOPLE} Список пользователей"
     PUBLIC_WORKOUT = f"{GLOBE} Публичная (рассылка всем)"

@@ -28,5 +28,9 @@ class UserProfileStates(StatesGroup):
     waiting_for_edit_phone = State()
     waiting_for_edit_email = State()
 
-class  WorkoutStates(StatesGroup):
+class WorkoutStates(StatesGroup):
     waiting_for_workout_link = State()
+
+class ReportStates(StatesGroup):
+    waiting_for_start_date = State()
+    waiting_for_end_date = State()

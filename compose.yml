@@ -20,6 +20,7 @@ services:
       - ./models:/app/models
       - ./managers:/app/managers
       - ./utils:/app/utils
+      - ./service_account.json:/app/service_account.json
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -65,6 +66,7 @@ services:
       - ./backups:/app/backups
       - ./models:/app/models
       - ./database.py:/app/database.py
+      - ./service_account.json:/app/service_account.json
     dns:
       - 8.8.8.8
       - 8.8.4.4
