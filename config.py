@@ -43,16 +43,11 @@ def load_settings() -> Settings:
             admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
         except ValueError:
             print("Ошибка при парсинге ADMIN_IDS, используется пустой список")
-    if os.getenv('TEST_MODE', False):
-        payment_token_tg = os.getenv("PAYMENT_TOKEN_TG_TEST", "")
-    else:
-        payment_token_tg = os.getenv("PAYMENT_TOKEN_TG", "")
-
 
     return Settings(
         BOT_TOKEN=os.getenv("BOT_TOKEN", ""),
         PAYMENT_TOKEN=os.getenv("PAYMENT_TOKEN", ""),
-        PAYMENT_TOKEN_TG=payment_token_tg,
+        PAYMENT_TOKEN_TG= os.getenv("PAYMENT_TOKEN_TG", ""),
         DATABASE_URL=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/bot.db"),
         OWNER_ID=int(os.getenv("OWNER_ID", "0")),
         ADMIN_IDS=admin_ids,
