@@ -23,7 +23,7 @@ COPY requirements.txt .
 # Устанавливаем зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем все файлы проекта
+# Копируем все файлы проекта (.env исключён через .dockerignore — подаётся через env_file в compose.yml)
 COPY . .
 
 # Создаем директорию для базы данных
